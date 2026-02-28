@@ -2,9 +2,23 @@ import { useState, useRef } from 'react';
 import { formTemplates } from '../data/mockData';
 import './HomePage.css';
 
-export default function HomePage({ onSelectTemplate }) {
+export default function HomePage({ onSelectTemplate, onUploadPdf, isUploading, uploadError }) {
     const [dragOver, setDragOver] = useState(false);
+    const [error, setError] = useState('');
     const fileInputRef = useRef(null);
+
+    const processFile = async (file) => {
+        if (!file) return;
+
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+        if (!isPdf) {
+            setError('Please upload a PDF file only.');
+            return;
+        }
+
+        setError('');
+        await onUploadPdf?.(file);
+    };
 
     const handleDragOver = (e) => {
         e.preventDefault();
@@ -13,16 +27,15 @@ export default function HomePage({ onSelectTemplate }) {
 
     const handleDragLeave = () => setDragOver(false);
 
-    const handleDrop = (e) => {
+    const handleDrop = async (e) => {
         e.preventDefault();
         setDragOver(false);
-        // For mock purposes, trigger FEMA template
-        onSelectTemplate('fema-009-0-3');
+        const file = e.dataTransfer.files?.[0];
+        await processFile(file);
     };
 
     const handleUploadClick = () => {
-        // For mock purposes, trigger FEMA template directly
-        onSelectTemplate('fema-009-0-3');
+        fileInputRef.current?.click();
     };
 
     return (
@@ -45,7 +58,9 @@ export default function HomePage({ onSelectTemplate }) {
                     accept=".pdf"
                     className="upload-input-hidden"
                     ref={fileInputRef}
-                    onChange={() => onSelectTemplate('fema-009-0-3')}
+                    onChange={async (e) => {
+                        await processFile(e.target.files?.[0]);
+                    }}
                 />
 
                 <div className="upload-zone-icon">
@@ -65,14 +80,18 @@ export default function HomePage({ onSelectTemplate }) {
 
                 <button
                     className="btn btn-primary upload-btn"
+                    disabled={isUploading}
                     onClick={(e) => {
                         e.stopPropagation();
                         handleUploadClick();
                     }}
                 >
-                    Upload PDF
+                    {isUploading ? 'Uploading...' : 'Upload PDF'}
                 </button>
             </div>
+
+            {error && <p className="upload-error">{error}</p>}
+            {uploadError && <p className="upload-error">{uploadError}</p>}
 
             <p className="upload-supported">Supported: FEMA, Housing, Medical Intake</p>
 

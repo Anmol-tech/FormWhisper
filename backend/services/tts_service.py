@@ -1,17 +1,27 @@
-"""
-TTS (Text-to-Speech) service — STUB.
-Replace with ElevenLabs API calls when ready.
-"""
+# import os
+# from dotenv import load_dotenv
+# from elevenlabs.client import ElevenLabs
+# # Change the import to target the utility function directly
+# import elevenlabs.play as play
 
 
-async def synthesize(text: str, voice_id: str = "default") -> bytes | None:
-    """
-    STUB: Would call ElevenLabs API to synthesize speech.
 
-    TODO: Replace with real TTS:
-      1. Call ElevenLabs /v1/text-to-speech/{voice_id}
-      2. Return audio bytes (mp3)
-      3. Cache common confirmations to save API credits
-    """
-    # Return None to signal stub mode
-    return None
+# load_dotenv()
+
+# # Use the environment variable from your .env file
+# client = ElevenLabs(
+#     api_key=os.getenv("ELEVENLABS_API_KEY")
+# )
+
+# # Generate the audio
+# audio_generator = client.text_to_speech.convert(
+#     text="The first move is what sets everything in motion.",
+#     voice_id="JBFqnCBsd6RMkjVDRZzb",
+#     model_id="eleven_multilingual_v2",
+#     output_format="mp3_44100_128",
+# )
+
+# # Convert the stream into a single playable block
+# # This solves the 'TypeError' and 'Generator' issues
+# audio_bytes = b"".join(list(audio_generator))
+# play.play(audio_bytes)

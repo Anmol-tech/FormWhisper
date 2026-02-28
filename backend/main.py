@@ -5,7 +5,7 @@ FormWhisper Backend — FastAPI entry point.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import session, tts, security
+from routers import session, tts, security, upload
 
 app = FastAPI(
     title="FormWhisper API",
@@ -29,6 +29,7 @@ app.add_middleware(
 app.include_router(session.router)
 app.include_router(tts.router)
 app.include_router(security.router)
+app.include_router(upload.router)
 
 
 # ── Health check ─────────────────────────────────────────

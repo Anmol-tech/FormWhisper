@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { femaForm } from '../data/mockData';
 import './FormSession.css';
 
@@ -14,7 +14,7 @@ const MOCK_ANSWERS = {
     has_insurance: 'No',
 };
 
-export default function FormSession() {
+export default function FormSession({ pdfUrl, fileName, liveAnswers }) {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [answers, setAnswers] = useState({});
     const [phase, setPhase] = useState('asking'); // asking | confirming | complete
@@ -24,6 +24,12 @@ export default function FormSession() {
     const current = questions[currentIndex];
     const totalQuestions = questions.length;
     const progress = ((Object.keys(answers).length) / totalQuestions) * 100;
+
+    // Merge live answers coming from backend in real time
+    useEffect(() => {
+        if (!liveAnswers) return;
+        setAnswers((prev) => ({ ...prev, ...liveAnswers }));
+    }, [liveAnswers]);
 
     const handleMicClick = () => {
         if (phase !== 'asking') return;
@@ -81,40 +87,32 @@ export default function FormSession() {
                     <div className="pdf-header">
                         <div className="pdf-agency-logo">{femaForm.agency}</div>
                         <div className="pdf-header-text">
-                            <h2>{femaForm.title}</h2>
-                            <p>{femaForm.subtitle}</p>
+                            <h2>{fileName || femaForm.title}</h2>
+                            <p>{fileName ? 'Uploaded PDF' : femaForm.subtitle}</p>
                         </div>
                     </div>
+                    {pdfUrl ? (
+                        <div className="pdf-iframe-wrapper">
+                            <div className="pdf-iframe-bar">
+                                <span>Uploaded PDF Preview</span>
+                                <a href={pdfUrl} target="_blank" rel="noreferrer" className="pdf-open-link">
+                                    Open in new tab ↗
+                                </a>
+                            </div>
+                            <iframe
+                                title="Uploaded PDF Preview"
+                                src={pdfUrl}
+                                className="pdf-iframe"
+                            />
+                        </div>
+                    ) : (
+                        <p className="pdf-description">
+                            The FEMA Disaster Aid application is used to apply for Individual Assistance
+                            including housing assistance and other disaster-related needs. Complete all
+                            applicable fields. Assistance is available regardless of immigration status.
+                        </p>
+                    )}
 
-                    <p className="pdf-description">
-                        The FEMA Disaster Aid application is used to apply for Individual Assistance
-                        including housing assistance and other disaster-related needs. Complete all
-                        applicable fields. Assistance is available regardless of immigration status.
-                    </p>
-
-                    <div className="pdf-fields">
-                        {questions.map((q, i) => {
-                            const isFilled = !!answers[q.fieldName];
-                            const isActive = i === currentIndex && phase !== 'complete';
-                            return (
-                                <div
-                                    key={q.id}
-                                    className={`pdf-field ${isActive ? 'active' : ''} ${isFilled ? 'filled' : ''}`}
-                                >
-                                    <span className="pdf-field-number">{q.id}</span>
-                                    <span className="pdf-field-label">{q.label}</span>
-                                    {isFilled && (
-                                        <span className="pdf-field-value">{answers[q.fieldName]}</span>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    <div className="pdf-footer">
-                        <span>Disaster Aid Form</span>
-                        <span>Page 1 of 1</span>
-                    </div>
                 </div>
             </div>
 

@@ -1,22 +1,18 @@
-"""TTS router — STUB for ElevenLabs dynamic confirmations."""
+"""TTS router — ElevenLabs integration."""
 
 from fastapi import APIRouter
+
 from models.schemas import TTSRequest, TTSResponse
+from services import tts as tts_service
 
 router = APIRouter(tags=["tts"])
 
 
-@router.post("/tts", response_model=TTSResponse, status_code=501)
+@router.post("/tts", response_model=TTSResponse)
 async def text_to_speech(body: TTSRequest):
     """
-    STUB: Generate speech audio from text.
-
-    TODO: Integrate ElevenLabs API
-      - POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}
-      - Use pre-generated audio for static prompts
-      - Live TTS only for dynamic confirmations ("I heard X, correct?")
+    Generate speech audio from text via ElevenLabs.
+    Returns a data URL (audio/mpeg) so the frontend can play it without storage.
     """
-    return TTSResponse(
-        audio_url=None,
-        message=f"TTS not implemented yet. Would synthesize: '{body.text}'",
-    )
+    audio_url = await tts_service.synthesize(body.text, voice_id=body.voice_id)
+    return TTSResponse(audio_url=audio_url, message="ok")

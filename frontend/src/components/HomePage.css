@@ -84,6 +84,12 @@
     margin-top: 0.75rem;
 }
 
+.upload-error {
+    color: var(--clr-danger);
+    font-size: var(--fs-xs);
+    margin-top: 0.5rem;
+}
+
 /* ── Template Cards ── */
 .templates-section {
     margin-top: 2.5rem;
