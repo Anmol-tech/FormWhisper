@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { femaForm } from '../data/mockData';
 import './FormSession.css';
 
@@ -15,10 +15,16 @@ const MOCK_ANSWERS = {
 };
 
 export default function FormSession({ pdfUrl, fileName, liveAnswers }) {
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
     const [currentIndex, setCurrentIndex] = useState(0);
     const [answers, setAnswers] = useState({});
     const [phase, setPhase] = useState('asking'); // asking | confirming | complete
     const [isListening, setIsListening] = useState(false);
+    const [uploadingAudio, setUploadingAudio] = useState(false);
+    const [audioError, setAudioError] = useState('');
+
+    const mediaRecorderRef = useRef(null);
+    const chunksRef = useRef([]);
 
     const questions = femaForm.questions;
     const current = questions[currentIndex];
@@ -31,22 +37,65 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers }) {
         setAnswers((prev) => ({ ...prev, ...liveAnswers }));
     }, [liveAnswers]);
 
-    const handleMicClick = () => {
-        if (phase !== 'asking') return;
-        setIsListening((prev) => {
-            if (prev) {
-                // Stop listening → show confirmation
-                setPhase('confirming');
-                return false;
+    const uploadAudio = async (file) => {
+        setUploadingAudio(true);
+        setAudioError('');
+        try {
+            const form = new FormData();
+            form.append('file', file);
+            const res = await fetch(`${API_BASE}/upload/audio`, {
+                method: 'POST',
+                body: form,
+            });
+            if (!res.ok) {
+                throw new Error('Upload failed');
             }
-            // Start listening
-            // Simulate stopping after 2 seconds
-            setTimeout(() => {
+            // You can use the returned URL for ASR or storage if needed
+            await res.json();
+        } catch (err) {
+            console.error(err);
+            setAudioError('Audio upload failed. Please try again.');
+        } finally {
+            setUploadingAudio(false);
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop();
+        }
+    };
+
+    const handleMicClick = async () => {
+        if (phase !== 'asking') return;
+
+        if (isListening) {
+            stopRecording();
+            return;
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const recorder = new MediaRecorder(stream);
+            chunksRef.current = [];
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunksRef.current.push(e.data);
+            };
+            recorder.onstop = async () => {
+                const blob = new Blob(chunksRef.current, { type: 'audio/mpeg' });
+                const file = new File([blob], 'recording.mp3', { type: 'audio/mpeg' });
+                stream.getTracks().forEach((t) => t.stop());
                 setIsListening(false);
                 setPhase('confirming');
-            }, 2000);
-            return true;
-        });
+                await uploadAudio(file);
+            };
+            mediaRecorderRef.current = recorder;
+            recorder.start();
+            setIsListening(true);
+        } catch (err) {
+            console.error(err);
+            setAudioError('Microphone access denied or not available.');
+        }
     };
 
     const handleConfirm = (confirmed) => {
@@ -166,7 +215,9 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers }) {
 
                         <p className="voice-instruction">
                             {isListening ? 'Listening...' : 'Speak your answer now'}
+                            {uploadingAudio && ' (Uploading...)'}
                         </p>
+                        {audioError && <p className="voice-error">{audioError}</p>}
 
                         {/* Mic Button */}
                         <div className="mic-button-wrapper">

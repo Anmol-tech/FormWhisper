@@ -197,6 +197,13 @@
     z-index: 1;
 }
 
+.voice-error {
+    color: #ffbfbf;
+    font-size: var(--fs-xs);
+    margin-top: -1.25rem;
+    margin-bottom: 1rem;
+}
+
 /* ── Mic Button ── */
 .mic-button-wrapper {
     position: relative;

@@ -9,6 +9,8 @@ from fastapi.responses import FileResponse
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+AUDIO_DIR = UPLOAD_DIR / "audio"
+AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
@@ -58,4 +60,55 @@ async def get_pdf(file_id: str):
         media_type="application/pdf",
         filename=path.name,
         headers={"Content-Disposition": f"inline; filename={path.name}"},
+    )
+
+
+@router.post("/audio")
+async def upload_audio(file: UploadFile = File(...)):
+    """Accept an audio file (mp3/webm/ogg) and store it."""
+    if not file.content_type or not file.content_type.startswith("audio/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only audio files are accepted",
+        )
+
+    file_id = uuid4().hex
+    suffix = Path(file.filename or "").suffix or ".mp3"
+    save_path = AUDIO_DIR / f"{file_id}{suffix}"
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty",
+        )
+
+    save_path.write_bytes(data)
+
+    return {
+        "file_id": file_id,
+        "original_filename": file.filename,
+        "content_type": file.content_type,
+        "size_bytes": save_path.stat().st_size,
+        "url": f"/upload/audio/{file_id}",
+    }
+
+
+@router.get("/audio/{file_id}")
+async def get_audio(file_id: str):
+    """Return a previously uploaded audio file by its id."""
+    # try common suffixes
+    for suffix in (".mp3", ".webm", ".ogg", ".wav", ".m4a"):
+        path = AUDIO_DIR / f"{file_id}{suffix}"
+        if path.exists():
+            return FileResponse(
+                path,
+                media_type="audio/mpeg",
+                filename=path.name,
+                headers={"Content-Disposition": f"inline; filename={path.name}"},
+            )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Audio not found",
     )
