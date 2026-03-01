@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './FormSession.css';
 
-export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQuestions, isAnalyzing, analyzeError }) {
+export default function FormSession({ pdfUrl, fileName, fileId, liveAnswers, analyzedQuestions, isAnalyzing, analyzeError }) {
     const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
     const [currentIndex, setCurrentIndex] = useState(0);
     const [answers, setAnswers] = useState({});
@@ -13,6 +13,8 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
     const [verifyFeedback, setVerifyFeedback] = useState('');
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState('');
+    const [isDownloading, setIsDownloading] = useState(false);
+    const [downloadError, setDownloadError] = useState('');
 
     const mediaRecorderRef = useRef(null);
     const chunksRef = useRef([]);
@@ -46,6 +48,7 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
                 type: q.type,
                 options: q.options || null,
                 audioUrl: q.audio_url || null,
+                bounding_box: q.bounding_box || null,
             }))
             : [],
         [analyzedQuestions]
@@ -83,6 +86,7 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
         setVerifyFeedback('');
         setIsEditing(false);
         setEditValue('');
+        setDownloadError('');
     }, [analyzedQuestions]);
 
     // Merge live answers coming from backend in real time
@@ -248,6 +252,49 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
         }
     };
 
+    const handleDownload = async () => {
+        if (!fileId) {
+            setDownloadError('No uploaded PDF found. Please upload again.');
+            return;
+        }
+        if (!analyzedQuestions || analyzedQuestions.length === 0) {
+            setDownloadError('Form structure not available. Analyze the PDF first.');
+            return;
+        }
+        setIsDownloading(true);
+        setDownloadError('');
+        try {
+            const res = await fetch(`${API_BASE}/llm/fill-pdf`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    file_id: fileId,
+                    answers,
+                    fields: analyzedQuestions,
+                }),
+            });
+            if (!res.ok) {
+                const err = await res.text();
+                throw new Error(err || 'Failed to generate filled PDF');
+            }
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const baseName = fileName ? fileName.replace(/\.pdf$/i, '') : 'filled_form';
+            a.download = `${baseName}_filled.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error(err);
+            setDownloadError(err.message || 'Download failed');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
     const handleNextField = () => {
         if (phase === 'asking') {
             // Skip this field
@@ -401,10 +448,13 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
                         <p className="complete-subtitle">
                             All {totalQuestions} fields have been filled successfully.
                         </p>
-                        <button className="download-btn">
+                        <button className="download-btn" onClick={handleDownload} disabled={isDownloading}>
                             <span style={{ marginRight: '0.5rem' }}>📄</span>
-                            Download Filled PDF
+                            {isDownloading ? 'Preparing PDF...' : 'Download Filled PDF'}
                         </button>
+                        {downloadError && (
+                            <p className="voice-error" style={{ marginTop: '0.75rem' }}>{downloadError}</p>
+                        )}
                     </div>
                 ) : phase === 'verifying' ? (
                     <div className="voice-confirmation">
