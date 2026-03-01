@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { femaForm } from '../data/mockData';
 import './FormSession.css';
 
 export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQuestions, isAnalyzing, analyzeError }) {
@@ -36,7 +35,7 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
         audio.play().catch(() => { /* autoplay blocked — user gesture required */ });
     };
 
-    // Use VLM-analyzed questions when available, fallback to mock FEMA template
+    // Use VLM-analyzed questions when available
     const questions = useMemo(() =>
         analyzedQuestions && analyzedQuestions.length > 0
             ? analyzedQuestions.map((q) => ({
@@ -47,13 +46,13 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
                 options: q.options || null,
                 audioUrl: q.audio_url || null,
             }))
-            : femaForm.questions,
+            : [],
         [analyzedQuestions]
     );
 
     const current = questions[currentIndex];
     const totalQuestions = questions.length;
-    const progress = ((Object.keys(answers).length) / totalQuestions) * 100;
+    const progress = totalQuestions > 0 ? ((Object.keys(answers).length) / totalQuestions) * 100 : 0;
 
     // Auto-play question audio exactly once when the current question changes
     const lastPlayedIndexRef = useRef(-1);
@@ -249,10 +248,10 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
             <div className="pdf-preview">
                 <div className="pdf-document">
                     <div className="pdf-header">
-                        <div className="pdf-agency-logo">{femaForm.agency}</div>
+                        <div className="pdf-agency-logo">📋</div>
                         <div className="pdf-header-text">
-                            <h2>{fileName || femaForm.title}</h2>
-                            <p>{fileName ? 'Uploaded PDF' : femaForm.subtitle}</p>
+                            <h2>{fileName || 'Form'}</h2>
+                            <p>{fileName ? 'Uploaded PDF' : 'Upload a PDF to get started'}</p>
                         </div>
                     </div>
 
@@ -265,7 +264,11 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
                             </span>
                         </div>
                         <div className="live-form-fields">
-                            {questions.map((q, idx) => {
+                            {questions.length === 0 ? (
+                                <div className="live-form-empty">
+                                    <p>{isAnalyzing ? 'Analyzing form fields...' : 'No fields yet — upload and analyze a PDF to begin.'}</p>
+                                </div>
+                            ) : questions.map((q, idx) => {
                                 const isCurrent = idx === currentIndex && phase !== 'complete';
                                 const answer = answers[q.fieldName];
                                 const isFilled = answer !== undefined && answer !== '';
@@ -304,7 +307,7 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
                                 );
                             })}
                         </div>
-                    </div>
+                    </div>)
 
                     {/* Collapsible PDF preview */}
                     {pdfUrl && (
@@ -350,6 +353,13 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
                         <h2 className="analyzing-title">⚠️ Analysis Issue</h2>
                         <p className="analyzing-subtitle">{analyzeError}</p>
                         <p className="analyzing-subtitle">Using default form questions instead.</p>
+                    </div>
+                ) : questions.length === 0 ? (
+                    <div className="voice-analyzing">
+                        <h2 className="analyzing-title">Waiting for form data</h2>
+                        <p className="analyzing-subtitle">
+                            Upload a PDF on the home page to get started.
+                        </p>
                     </div>
                 ) : phase === 'complete' ? (
                     <div className="voice-complete">

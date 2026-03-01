@@ -166,6 +166,13 @@
 	border-radius: 2px;
 }
 
+.live-form-empty {
+	padding: 2rem 1rem;
+	text-align: center;
+	color: var(--clr-gray-500, #888);
+	font-size: 0.95rem;
+}
+
 .live-field {
 	display: flex;
 	flex-direction: column;

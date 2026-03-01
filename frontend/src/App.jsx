@@ -9,7 +9,6 @@ function App() {
   const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
   const [view, setView] = useState('home'); // home | session
-  const [activeTemplate, setActiveTemplate] = useState(null);
   const [uploadedPdf, setUploadedPdf] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -22,11 +21,6 @@ function App() {
       if (uploadedPdf?.url?.startsWith('blob:')) URL.revokeObjectURL(uploadedPdf.url);
     };
   }, [uploadedPdf]);
-
-  const handleSelectTemplate = (templateId) => {
-    setActiveTemplate(templateId);
-    setView('session');
-  };
 
   const handlePdfUpload = async (file) => {
     if (!file) return;
@@ -61,7 +55,6 @@ function App() {
         fileId,
       });
 
-      setActiveTemplate(null);
       setView('session');
       setIsUploading(false);
 
@@ -96,7 +89,6 @@ function App() {
 
   const handleLogoClick = () => {
     setView('home');
-    setActiveTemplate(null);
     setAnalyzedQuestions(null);
     setAnalyzeError('');
     setUploadedPdf((prev) => {
@@ -107,10 +99,7 @@ function App() {
 
   const getSessionName = () => {
     if (uploadedPdf?.name) return uploadedPdf.name;
-    if (activeTemplate === 'fema-009-0-3') return 'FEMA Form 009-0-3';
-    if (activeTemplate === 'housing-app') return 'Housing Application';
-    if (activeTemplate === 'medical-intake') return 'Medical Intake Form';
-    return null;
+    return 'Form Session';
   };
 
   return (
@@ -124,7 +113,6 @@ function App() {
         <>
           <HomePage
             onUploadPdf={handlePdfUpload}
-            onSelectTemplate={handleSelectTemplate}
             isUploading={isUploading}
             uploadError={uploadError}
           />

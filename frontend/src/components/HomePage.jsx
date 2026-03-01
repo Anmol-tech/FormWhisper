@@ -1,8 +1,7 @@
 import { useState, useRef } from 'react';
-import { formTemplates } from '../data/mockData';
 import './HomePage.css';
 
-export default function HomePage({ onSelectTemplate, onUploadPdf, isUploading, uploadError }) {
+export default function HomePage({ onUploadPdf, isUploading, uploadError }) {
     const [dragOver, setDragOver] = useState(false);
     const [error, setError] = useState('');
     const fileInputRef = useRef(null);
@@ -93,27 +92,7 @@ export default function HomePage({ onSelectTemplate, onUploadPdf, isUploading, u
             {error && <p className="upload-error">{error}</p>}
             {uploadError && <p className="upload-error">{uploadError}</p>}
 
-            <p className="upload-supported">Supported: FEMA, Housing, Medical Intake</p>
-
-            <section className="templates-section">
-                <h2 className="templates-title">Or choose a template</h2>
-                <div className="templates-grid">
-                    {formTemplates.map((t) => (
-                        <div
-                            key={t.id}
-                            className="template-card"
-                            onClick={() => onSelectTemplate(t.id)}
-                            role="button"
-                            tabIndex={0}
-                            aria-label={`Select ${t.name} template`}
-                        >
-                            <div className="template-card-icon">{t.icon}</div>
-                            <div className="template-card-name">{t.name}</div>
-                            <div className="template-card-desc">{t.description}</div>
-                        </div>
-                    ))}
-                </div>
-            </section>
+            <p className="upload-supported">Supported: Government forms, applications, intake forms &amp; more</p>
         </main>
     );
 }
