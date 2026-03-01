@@ -89,12 +89,15 @@ async def ensure_question_audio(text: str) -> str | None:
 
 
 async def ensure_all_audio(
-    prompts: list[str], batch_size: int = 3, delay: float = 0.5
+    prompts: list[str], batch_size: int = 1, delay: float = 1.2
 ) -> list[str | None]:
     """
-    Generate audio for a list of prompts in small sequential batches to avoid
-    hitting ElevenLabs rate limits.  Each batch runs concurrently; batches are
-    separated by a short delay.
+    Generate audio for a list of prompts one at a time (batch_size=1 default)
+    to stay within ElevenLabs' 2-concurrent-request limit.
+
+    batch_size=1 ensures the pre-caching background task never sends more than
+    one request at a time, leaving the other slot free for real-time TTS calls
+    made during the voice interaction session.
 
     Returns a list of filenames (or None for any that failed) in the same order.
     """
