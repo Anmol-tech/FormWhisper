@@ -18,14 +18,6 @@ export default function Header({ activeSession, onLogoClick }) {
                     </div>
                 </div>
 
-                <nav className="header-nav">
-                    {activeSession && (
-                        <button className="btn btn-outline" style={{ fontSize: '0.8rem', padding: '0.4rem 1rem' }}>
-                            Log in
-                        </button>
-                    )}
-                    <button className="btn btn-primary">Sign Up</button>
-                </nav>
             </header>
 
             {activeSession && (
