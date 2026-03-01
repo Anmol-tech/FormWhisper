@@ -2,18 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { femaForm } from '../data/mockData';
 import './FormSession.css';
 
-// Mock answers for demo purposes
-const MOCK_ANSWERS = {
-    applicant_name: 'Sid Johnson',
-    date_of_birth: 'March 15, 1990',
-    ssn: '***-**-1234',
-    mailing_address: '1234 Oak Street, Austin, TX 78701',
-    phone_number: '(512) 555-0147',
-    disaster_type: 'Hurricane',
-    damaged_property_address: '1234 Oak Street, Austin, TX 78701',
-    has_insurance: 'No',
-};
-
 export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQuestions, isAnalyzing, analyzeError }) {
     const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -22,6 +10,7 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
     const [isListening, setIsListening] = useState(false);
     const [uploadingAudio, setUploadingAudio] = useState(false);
     const [audioError, setAudioError] = useState('');
+    const [lastTranscript, setLastTranscript] = useState('');
 
     const mediaRecorderRef = useRef(null);
     const chunksRef = useRef([]);
@@ -46,6 +35,7 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
         setCurrentIndex(0);
         setAnswers({});
         setPhase('asking');
+        setLastTranscript('');
     }, [analyzedQuestions]);
 
     // Merge live answers coming from backend in real time
@@ -54,24 +44,28 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
         setAnswers((prev) => ({ ...prev, ...liveAnswers }));
     }, [liveAnswers]);
 
-    const uploadAudio = async (file) => {
+    const transcribeAudio = async (file) => {
         setUploadingAudio(true);
         setAudioError('');
         try {
             const form = new FormData();
             form.append('file', file);
-            const res = await fetch(`${API_BASE}/upload/audio`, {
+            const res = await fetch(`${API_BASE}/upload/transcribe`, {
                 method: 'POST',
                 body: form,
             });
             if (!res.ok) {
-                throw new Error('Upload failed');
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'Transcription failed');
             }
-            // You can use the returned URL for ASR or storage if needed
-            await res.json();
+            const data = await res.json();
+            const transcript = data.transcript || '';
+            setLastTranscript(transcript);
+            setPhase('confirming');
         } catch (err) {
             console.error(err);
-            setAudioError('Audio upload failed. Please try again.');
+            setAudioError(`Transcription failed: ${err.message}`);
+            setPhase('asking');
         } finally {
             setUploadingAudio(false);
         }
@@ -99,12 +93,14 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
                 if (e.data.size > 0) chunksRef.current.push(e.data);
             };
             recorder.onstop = async () => {
-                const blob = new Blob(chunksRef.current, { type: 'audio/mpeg' });
-                const file = new File([blob], 'recording.mp3', { type: 'audio/mpeg' });
+                // Use the actual MIME type the recorder produces (usually webm/opus)
+                const mimeType = recorder.mimeType || 'audio/webm';
+                const ext = mimeType.includes('webm') ? 'webm' : mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+                const blob = new Blob(chunksRef.current, { type: mimeType });
+                const file = new File([blob], `recording.${ext}`, { type: mimeType });
                 stream.getTracks().forEach((t) => t.stop());
                 setIsListening(false);
-                setPhase('confirming');
-                await uploadAudio(file);
+                await transcribeAudio(file);
             };
             mediaRecorderRef.current = recorder;
             recorder.start();
@@ -117,18 +113,19 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
 
     const handleConfirm = (confirmed) => {
         if (confirmed) {
-            const mockAnswer = MOCK_ANSWERS[current.fieldName] || 'Sample Answer';
-            setAnswers((prev) => ({ ...prev, [current.fieldName]: mockAnswer }));
+            setAnswers((prev) => ({ ...prev, [current.fieldName]: lastTranscript }));
 
             if (currentIndex < totalQuestions - 1) {
                 setCurrentIndex((prev) => prev + 1);
                 setPhase('asking');
+                setLastTranscript('');
             } else {
                 setPhase('complete');
             }
         } else {
             // Retry
             setPhase('asking');
+            setLastTranscript('');
         }
     };
 
@@ -138,12 +135,17 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
 
     const handleNextField = () => {
         if (phase === 'asking') {
-            // Simulate answering and go to confirm
-            setPhase('confirming');
+            // Skip this field
+            setAnswers((prev) => ({ ...prev, [current.fieldName]: '' }));
+            if (currentIndex < totalQuestions - 1) {
+                setCurrentIndex((prev) => prev + 1);
+            } else {
+                setPhase('complete');
+            }
         }
     };
 
-    const getMockAnswer = () => MOCK_ANSWERS[current?.fieldName] || 'Sample Answer';
+    const getTranscript = () => lastTranscript || '(no speech detected)';
 
     return (
         <div className="form-session">
@@ -222,7 +224,8 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
                 ) : phase === 'confirming' ? (
                     <div className="voice-confirmation">
                         <p className="voice-confirmation-heard">I heard:</p>
-                        <p className="voice-confirmation-value">"{getMockAnswer()}"</p>
+                        <p className="voice-confirmation-value">"{getTranscript()}"</p>
+                        {uploadingAudio && <p className="voice-transcribing">Transcribing...</p>}
                         <p className="voice-confirmation-prompt">Is that correct?</p>
                         <div className="confirm-actions">
                             <button className="confirm-btn yes" onClick={() => handleConfirm(true)}>
@@ -263,8 +266,7 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
                         )}
 
                         <p className="voice-instruction">
-                            {isListening ? 'Listening...' : 'Speak your answer now'}
-                            {uploadingAudio && ' (Uploading...)'}
+                            {isListening ? 'Listening...' : uploadingAudio ? 'Transcribing your answer...' : 'Speak your answer now'}
                         </p>
                         {audioError && <p className="voice-error">{audioError}</p>}
 
