@@ -154,11 +154,20 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
         }
     };
 
+    const activeFieldRef = useRef(null);
+
+    // Auto-scroll the active field into view
+    useEffect(() => {
+        if (activeFieldRef.current) {
+            activeFieldRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, [currentIndex]);
+
     const getTranscript = () => lastTranscript || '(no speech detected)';
 
     return (
         <div className="form-session">
-            {/* Left: PDF Preview */}
+            {/* Left: Dynamic Live Form */}
             <div className="pdf-preview">
                 <div className="pdf-document">
                     <div className="pdf-header">
@@ -168,28 +177,78 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
                             <p>{fileName ? 'Uploaded PDF' : femaForm.subtitle}</p>
                         </div>
                     </div>
-                    {pdfUrl ? (
-                        <div className="pdf-iframe-wrapper">
-                            <div className="pdf-iframe-bar">
-                                <span>Uploaded PDF Preview</span>
-                                <a href={pdfUrl} target="_blank" rel="noreferrer" className="pdf-open-link">
-                                    Open in new tab ↗
-                                </a>
-                            </div>
-                            <iframe
-                                title="Uploaded PDF Preview"
-                                src={pdfUrl}
-                                className="pdf-iframe"
-                            />
-                        </div>
-                    ) : (
-                        <p className="pdf-description">
-                            The FEMA Disaster Aid application is used to apply for Individual Assistance
-                            including housing assistance and other disaster-related needs. Complete all
-                            applicable fields. Assistance is available regardless of immigration status.
-                        </p>
-                    )}
 
+                    {/* Live form fields */}
+                    <div className="live-form">
+                        <div className="live-form-header">
+                            <span className="live-form-badge">Live Preview</span>
+                            <span className="live-form-count">
+                                {Object.values(answers).filter(v => v).length} / {totalQuestions} filled
+                            </span>
+                        </div>
+                        <div className="live-form-fields">
+                            {questions.map((q, idx) => {
+                                const isCurrent = idx === currentIndex && phase !== 'complete';
+                                const answer = answers[q.fieldName];
+                                const isFilled = answer !== undefined && answer !== '';
+                                const isSkipped = answer === '';
+
+                                return (
+                                    <div
+                                        key={q.id}
+                                        ref={isCurrent ? activeFieldRef : null}
+                                        className={`live-field ${isCurrent ? 'live-field--active' : ''} ${isFilled ? 'live-field--filled' : ''} ${isSkipped && !isCurrent ? 'live-field--skipped' : ''}`}
+                                        onClick={() => {
+                                            if (phase !== 'complete') {
+                                                setCurrentIndex(idx);
+                                                setPhase('asking');
+                                                setLastTranscript('');
+                                                setAudioError('');
+                                            }
+                                        }}
+                                    >
+                                        <div className="live-field-label">
+                                            <span className="live-field-num">{q.id}</span>
+                                            <span className="live-field-name">{q.label}</span>
+                                            {isFilled && <span className="live-field-check">✓</span>}
+                                        </div>
+                                        <div className={`live-field-value ${isCurrent && isListening ? 'live-field-value--listening' : ''}`}>
+                                            {isCurrent && phase === 'confirming'
+                                                ? lastTranscript || '...'
+                                                : isFilled
+                                                    ? answer
+                                                    : isCurrent
+                                                        ? (isListening ? 'Listening...' : uploadingAudio ? 'Transcribing...' : '—')
+                                                        : '—'
+                                            }
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Collapsible PDF preview */}
+                    {pdfUrl && (
+                        <details className="pdf-collapse">
+                            <summary className="pdf-collapse-summary">
+                                📄 View Original PDF
+                            </summary>
+                            <div className="pdf-iframe-wrapper">
+                                <div className="pdf-iframe-bar">
+                                    <span>Uploaded PDF</span>
+                                    <a href={pdfUrl} target="_blank" rel="noreferrer" className="pdf-open-link">
+                                        Open in new tab ↗
+                                    </a>
+                                </div>
+                                <iframe
+                                    title="Uploaded PDF Preview"
+                                    src={pdfUrl}
+                                    className="pdf-iframe"
+                                />
+                            </div>
+                        </details>
+                    )}
                 </div>
             </div>
 
