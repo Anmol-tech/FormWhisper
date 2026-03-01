@@ -16,7 +16,9 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
 
     const mediaRecorderRef = useRef(null);
     const chunksRef = useRef([]);
-    const audioRef = useRef(null);  // track current TTS audio element
+    const audioRef = useRef(null);        // current TTS audio element
+    const silenceTimerRef = useRef(null); // setTimeout handle for auto-stop
+    const audioCtxRef = useRef(null);     // Web Audio context for VAD
 
     // Helper: play a question's TTS audio (retries once if file isn't ready yet)
     const playQuestionAudio = (audioUrl, retries = 3) => {
@@ -151,6 +153,14 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
     };
 
     const stopRecording = () => {
+        if (silenceTimerRef.current) {
+            clearTimeout(silenceTimerRef.current);
+            silenceTimerRef.current = null;
+        }
+        if (audioCtxRef.current) {
+            audioCtxRef.current.close().catch(() => {});
+            audioCtxRef.current = null;
+        }
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
             mediaRecorderRef.current.stop();
         }
@@ -172,7 +182,6 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
                 if (e.data.size > 0) chunksRef.current.push(e.data);
             };
             recorder.onstop = async () => {
-                // Use the actual MIME type the recorder produces (usually webm/opus)
                 const mimeType = recorder.mimeType || 'audio/webm';
                 const ext = mimeType.includes('webm') ? 'webm' : mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm';
                 const blob = new Blob(chunksRef.current, { type: mimeType });
@@ -184,6 +193,54 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
             mediaRecorderRef.current = recorder;
             recorder.start();
             setIsListening(true);
+
+            // ── Silence detection via Web Audio API ──────────────────────
+            // Stop automatically after SILENCE_MS ms of quiet once speech
+            // has been detected (RMS above SPEECH_THRESHOLD).
+            const SPEECH_THRESHOLD = 0.01;  // RMS level considered speech
+            const SILENCE_MS = 1500;         // ms of silence before auto-stop
+            const POLL_MS = 80;              // analysis interval
+
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                audioCtxRef.current = audioCtx;
+                const source = audioCtx.createMediaStreamSource(stream);
+                const analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 512;
+                source.connect(analyser);
+                const buf = new Float32Array(analyser.fftSize);
+
+                let speechDetected = false;
+                let silenceStart = null;
+
+                const poll = () => {
+                    // Stop polling if recorder already stopped
+                    if (!audioCtxRef.current) return;
+
+                    analyser.getFloatTimeDomainData(buf);
+                    const rms = Math.sqrt(buf.reduce((s, v) => s + v * v, 0) / buf.length);
+
+                    if (rms >= SPEECH_THRESHOLD) {
+                        speechDetected = true;
+                        silenceStart = null;
+                        if (silenceTimerRef.current) {
+                            clearTimeout(silenceTimerRef.current);
+                            silenceTimerRef.current = null;
+                        }
+                    } else if (speechDetected) {
+                        if (!silenceStart) silenceStart = Date.now();
+                        const silenceDuration = Date.now() - silenceStart;
+                        if (silenceDuration >= SILENCE_MS && !silenceTimerRef.current) {
+                            silenceTimerRef.current = setTimeout(() => stopRecording(), 0);
+                            return; // stop polling
+                        }
+                    }
+                    setTimeout(poll, POLL_MS);
+                };
+                poll();
+            } catch {
+                // Web Audio unavailable — manual stop only (graceful degradation)
+            }
         } catch (err) {
             console.error(err);
             setAudioError('Microphone access denied or not available.');
