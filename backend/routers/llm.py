@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, status
 from models.schemas import (
     LLMChatRequest,
     LLMChatResponse,
@@ -13,6 +13,7 @@ from models.schemas import (
     FormQuestion,
     VerifyAnswerRequest,
     VerifyAnswerResponse,
+    FillPdfRequest,
 )
 from services.llm import (
     chat,
@@ -22,6 +23,8 @@ from services.llm import (
     verify_answer,
 )
 from services.utils.tts_cache import audio_filename, ensure_all_audio
+from services.pdf_filler import fill_pdf_with_answers
+from services.pdf_filler import list_acroform_field_names
 
 # Upload directory (same as routers/upload.py)
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -167,3 +170,52 @@ async def verify_answer_endpoint(body: VerifyAnswerRequest):
         options=body.options,
     )
     return VerifyAnswerResponse(**result)
+
+
+@router.post("/fill-pdf")
+async def fill_pdf(body: FillPdfRequest):
+    """
+    Overlay user answers onto the uploaded PDF using VLM bounding boxes.
+
+    Returns the filled PDF bytes directly for download.
+    """
+    pdf_path = UPLOAD_DIR / f"{body.file_id}.pdf"
+    if not pdf_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"PDF with file_id '{body.file_id}' not found",
+        )
+
+    # pydantic gives FormQuestion objects; convert to dict for filler
+    fields_dicts = [q.model_dump() for q in body.fields]
+    try:
+        pdf_bytes = await fill_pdf_with_answers(pdf_path, fields_dicts, body.answers)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    filename = f"{pdf_path.stem}_filled.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/acroform-fields/{file_id}")
+async def acroform_fields(file_id: str):
+    """
+    Return the list of AcroForm field names for a given uploaded PDF.
+    Useful to align answer keys with real field names.
+    """
+    pdf_path = UPLOAD_DIR / f"{file_id}.pdf"
+    if not pdf_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"PDF with file_id '{file_id}' not found",
+        )
+
+    names = list_acroform_field_names(pdf_path)
+    return {"file_id": file_id, "field_names": names}

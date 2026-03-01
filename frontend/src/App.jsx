@@ -122,6 +122,7 @@ function App() {
         <FormSession
           pdfUrl={uploadedPdf?.url}
           fileName={uploadedPdf?.name}
+          fileId={uploadedPdf?.fileId}
           analyzedQuestions={analyzedQuestions}
           isAnalyzing={isAnalyzing}
           analyzeError={analyzeError}

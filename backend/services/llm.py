@@ -25,7 +25,7 @@ from services.utils.pdf_to_images import pdf_to_images
 logger = logging.getLogger(__name__)
 
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://165.245.130.21:30000")
-LLM_MODEL = os.getenv("LLM_MODEL", "Qwen/Qwen2.5-VL-7B-Instruct")
+LLM_MODEL = os.getenv("LLM_MODEL", "Qwen/Qwen2.5-VL-32B-Instruct")
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "3000"))
 
 
@@ -171,13 +171,13 @@ FORM_ANALYSIS_PROMPT = (
     "A FILLABLE FIELD is ONLY something with a BLANK space, line, box, or checkbox where the applicant must write/type/select.\n"
     "A STATEMENT the applicant merely reads or agrees to is NOT a field.\n"
     "Examples of things that are NOT fields (NEVER include these):\n"
-    '  × "I authorize FEMA to verify all information..."\n'
-    '  × "I authorize all custodians of records of my insurance..."\n'
-    '  × "I certify that the above information is true..."\n'
-    '  × "Penalty for false statements..."\n'
-    '  × "Privacy Act Statement..."\n'
-    '  × Any sentence that starts with "I authorize", "I certify", "I agree", "I understand", "I acknowledge"\n'
-    'If you are unsure whether something is a fillable field, ask yourself: "Is there a blank for the person to write in?"\n'
+    '  × \"I authorize FEMA to verify all information...\"\n'
+    '  × \"I authorize all custodians of records of my insurance...\"\n'
+    '  × \"I certify that the above information is true...\"\n'
+    '  × \"Penalty for false statements...\"\n'
+    '  × \"Privacy Act Statement...\"\n'
+    '  × Any sentence that starts with \"I authorize\", \"I certify\", \"I agree\", \"I understand\", \"I acknowledge\"\n'
+    'If you are unsure whether something is a fillable field, ask yourself: \"Is there a blank for the person to write in?\"\n'
     "If the answer is no, DO NOT include it.\n\n"
     "CRITICAL INSTRUCTIONS - READ CAREFULLY:\n"
     "1. SCAN EVERY SINGLE PAGE COMPLETELY:\n"
@@ -218,9 +218,9 @@ FORM_ANALYSIS_PROMPT = (
     "5. CONVERSATIONAL QUESTION STYLE - This is critical:\n"
     "   - Write prompts as a warm, friendly human assistant would say them out loud\n"
     "   - Use natural, spoken language — NOT bureaucratic form labels\n"
-    '   - Use contractions where natural (e.g., "What\'s", "Can you", "Could you")\n'
-    '   - Add brief context or empathy where helpful (e.g., "No worries if this changes —")\n'
-    '   - For sensitive fields (SSN, income), add a reassuring note (e.g., "This is kept private and secure.")\n'
+    '   - Use contractions where natural (e.g., \"What\'s\", \"Can you\", \"Could you\")\n'
+    '   - Add brief context or empathy where helpful (e.g., \"No worries if this changes —\")\n'
+    '   - For sensitive fields (SSN, income), add a reassuring note (e.g., \"This is kept private and secure.\")\n'
     "   - For choice/checkbox fields, phrase as a natural spoken question then list options\n"
     "   - Avoid words like 'please provide', 'enter', 'input', 'specify' — use 'tell me', 'what is', 'can you share'\n"
     "   - Keep questions SHORT and clear — one sentence ideally\n"
@@ -231,15 +231,16 @@ FORM_ANALYSIS_PROMPT = (
     "   - Quality over quantity: 15 real fields is better than 40 fields with junk\n"
     "   - Continue until you've processed every visible FILLABLE field on every page\n\n"
     "OUTPUT FORMAT - Return ONLY a valid JSON array. Each element must have:\n"
-    '   - "field_name": descriptive snake_case identifier (e.g., "applicant_first_name", "mailing_street_address")\n'
-    '   - "label": exact label text from the form (e.g., "First Name", "Street Address")\n'
-    '   - "type": one of: text, date, ssn, phone, address, yes_no, number, email, checkbox, choice\n'
-    '   - "prompt": conversational question as a friendly assistant would say it out loud\n'
-    '   - "options": (REQUIRED for checkbox/choice types) array of all available options\n\n'
+    '   - \"field_name\": descriptive snake_case identifier (e.g., \"applicant_first_name\", \"mailing_street_address\")\n'
+    '   - \"label\": exact label text from the form (e.g., \"First Name\", \"Street Address\")\n'
+    '   - \"type\": one of: text, date, ssn, phone, address, yes_no, number, email, checkbox, choice\n'
+    '   - \"prompt\": conversational question as a friendly assistant would say it out loud\n'
+    '   - \"options\": (REQUIRED for checkbox/choice types) array of all available options\n'
+    "   - \"bounding_box\": REQUIRED object with keys page (1-based), x_norm, y_norm, w_norm, h_norm — all floats 0-1, measured from the TOP-LEFT corner of the page and NORMALISED by page width/height. x_norm/y_norm refer to the upper-left of the input area; w_norm/h_norm cover the blank box/line region the applicant fills.\n\n"
     "OUTPUT FORMAT EXAMPLES (structure only — DO NOT include these in your output):\n"
     "[\n"
-    '  {"field_name":"<snake_case>","label":"<exact form label>","type":"text","prompt":"<friendly spoken question>"},\n'
-    '  {"field_name":"<snake_case>","label":"<exact form label>","type":"choice","prompt":"<question>","options":["Option A","Option B","Option C"]}\n'
+    '  {\"field_name\":\"<snake_case>\",\"label\":\"<exact form label>\",\"type\":\"text\",\"prompt\":\"<friendly spoken question>\",\"bounding_box\":{\"page\":1,\"x_norm\":0.12,\"y_norm\":0.24,\"w_norm\":0.25,\"h_norm\":0.04}},\n'
+    '  {\"field_name\":\"<snake_case>\",\"label\":\"<exact form label>\",\"type\":\"choice\",\"prompt\":\"<question>\",\"options\":[\"Option A\",\"Option B\",\"Option C\"],\"bounding_box\":{\"page\":2,\"x_norm\":0.55,\"y_norm\":0.31,\"w_norm\":0.18,\"h_norm\":0.05}}\n'
     "]\n"
     "WARNING: The placeholders above show structure only. Every field you output MUST come from the actual form images.\n\n"
     "IMPORTANT: Return ONLY the complete JSON array with ALL voice-fillable fields from ALL pages.\n"
@@ -280,6 +281,7 @@ async def analyze_pdf_form(
 
     # 2. Resize + JPEG-encode each page in-memory (avoids re-reading from disk)
     images_b64: list[tuple[str, str]] = []
+    page_sizes: list[tuple[int, int, int]] = []  # (page_num, width, height)
     for page in pages:
         img: PILImage.Image = page["image"]
         if img.width > MAX_IMG_WIDTH:
@@ -289,6 +291,7 @@ async def analyze_pdf_form(
         img.save(buf, format="JPEG", quality=85)
         b64 = base64.b64encode(buf.getvalue()).decode("ascii")
         images_b64.append((b64, "image/jpeg"))
+        page_sizes.append((page["page"], img.width, img.height))
 
     # 3. Build multi-image VLM request
     user_msg = build_multi_image_message(images_b64, text=FORM_ANALYSIS_PROMPT)
@@ -334,7 +337,7 @@ async def analyze_pdf_form(
     logger.info(f"Raw VLM output (FULL):\n{raw_content}")
 
     # 4. Parse the JSON from the LLM output
-    questions = _parse_questions_json(raw_content)
+    questions = _parse_questions_json(raw_content, page_sizes)
 
     logger.info(f"Successfully parsed {len(questions)} questions from VLM output")
     if len(questions) == 0:
@@ -351,7 +354,9 @@ async def analyze_pdf_form(
     }
 
 
-def _parse_questions_json(raw: str) -> list[dict[str, Any]]:
+def _parse_questions_json(
+    raw: str, page_sizes: list[tuple[int, int, int]] | None = None
+) -> list[dict[str, Any]]:
     """Best-effort parse of the LLM's JSON output into a questions list."""
     if not raw or not raw.strip():
         logger.warning("Empty raw output from VLM")
@@ -387,6 +392,80 @@ def _parse_questions_json(raw: str) -> list[dict[str, Any]]:
         logger.warning(f"Parsed data is not a list, got: {type(data)}")
         return []
 
+    page_size_map = {p: (w, h) for p, w, h in page_sizes or []}
+
+    def _extract_bbox(obj: dict) -> dict | None:
+        """Extract a normalised bounding box if present."""
+        candidates = [
+            obj.get("bounding_box"),
+            obj.get("bbox"),
+            obj.get("pdf_coordinates"),
+        ]
+        for cand in candidates:
+            if not isinstance(cand, dict):
+                continue
+            try:
+                page = int(
+                    cand.get("page")
+                    or cand.get("page_number")
+                    or cand.get("page_index")
+                    or 1
+                )
+                x = float(
+                    cand.get("x")
+                    if "x" in cand
+                    else cand.get("x_norm")
+                    or cand.get("left")
+                )
+                y = float(
+                    cand.get("y")
+                    if "y" in cand
+                    else cand.get("y_norm")
+                    or cand.get("top")
+                )
+                w = float(
+                    cand.get("w")
+                    if "w" in cand
+                    else cand.get("width")
+                    or cand.get("w_norm")
+                )
+                h = float(
+                    cand.get("h")
+                    if "h" in cand
+                    else cand.get("height")
+                    or cand.get("h_norm")
+                )
+            except Exception:
+                continue
+
+            # If values look absolute (pixels), convert using page size
+            if x > 1 or y > 1 or w > 1 or h > 1:
+                w_px, h_px = page_size_map.get(page, (None, None))
+                if w_px and h_px:
+                    x, y, w, h = (
+                        x / w_px,
+                        y / h_px,
+                        w / w_px,
+                        h / h_px,
+                    )
+                else:
+                    logger.info(
+                        "Bounding box values look absolute but page size missing — clamping to [0,1]"
+                    )
+                    x, y, w, h = [
+                        max(0.0, min(1.0, v / 1000 if v > 1 else v))
+                        for v in (x, y, w, h)
+                    ]
+
+            return {
+                "page": max(1, page),
+                "x_norm": max(0.0, min(1.0, x)),
+                "y_norm": max(0.0, min(1.0, y)),
+                "w_norm": max(0.0, min(1.0, w)),
+                "h_norm": max(0.0, min(1.0, h)),
+            }
+        return None
+
     # Normalise, filter, and assign sequential IDs
     questions: list[dict[str, Any]] = []
     filtered_count = 0
@@ -421,6 +500,10 @@ def _parse_questions_json(raw: str) -> list[dict[str, Any]]:
         # Add options if present (for checkbox/choice types)
         if "options" in item and isinstance(item["options"], list):
             question["options"] = item["options"]
+
+        bbox = _extract_bbox(item)
+        if bbox:
+            question["bounding_box"] = bbox
 
         questions.append(question)
 

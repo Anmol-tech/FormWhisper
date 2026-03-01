@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
+from pypdf import PdfReader
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "data" / "uploads"
@@ -35,6 +36,16 @@ async def upload_pdf(file: UploadFile = File(...)):
         )
 
     save_path.write_bytes(data)
+
+    # Run this to find the names you need to put in your FEMA_FIELD_MAP
+    reader = PdfReader(save_path)
+    fields = reader.get_fields()
+
+    if fields:
+        for field_name in fields.keys():
+            print(f"Hidden PDF Name: {field_name}")
+    else:
+        print("This PDF is flat. It has no AcroForm fields!")
 
     return {
         "file_id": file_id,

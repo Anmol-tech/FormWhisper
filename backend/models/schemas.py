@@ -3,6 +3,23 @@
 from pydantic import BaseModel
 
 
+# ── Shared helpers ──────────────────────────────────────
+
+
+class FieldBoundingBox(BaseModel):
+    """Normalized bounding box for a field on a PDF page.
+
+    Coordinates are relative to the rendered page the VLM saw. All values are
+    floats between 0 and 1, measured from the top-left corner.
+    """
+
+    page: int  # 1-based page number
+    x_norm: float
+    y_norm: float
+    w_norm: float
+    h_norm: float
+
+
 # ── Session ──────────────────────────────────────────────
 
 
@@ -155,6 +172,7 @@ class FormQuestion(BaseModel):
         None  # for checkbox/choice types, list of available options
     )
     audio_url: str | None = None  # relative URL to pre-generated TTS audio file
+    bounding_box: FieldBoundingBox | None = None  # normalized bbox of the input area
 
 
 class AnalyzePdfRequest(BaseModel):
@@ -194,6 +212,24 @@ class AnalyzePdfResponse(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+
+
+# ── PDF filling ─────────────────────────────────────────
+
+
+class FillPdfRequest(BaseModel):
+    """Fill the uploaded PDF with provided answers at given field locations."""
+
+    file_id: str
+    answers: dict[str, str]
+    fields: list[FormQuestion]
+
+
+class FillPdfResponse(BaseModel):
+    """Response containing the download URL for the filled PDF."""
+
+    pdf_url: str
+    filename: str
 
 
 # ── Security (optional) ─────────────────────────────────
