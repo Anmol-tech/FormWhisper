@@ -14,7 +14,13 @@ from models.schemas import (
     VerifyAnswerRequest,
     VerifyAnswerResponse,
 )
-from services.llm import chat, extract_content, build_image_message, analyze_pdf_form, verify_answer
+from services.llm import (
+    chat,
+    extract_content,
+    build_image_message,
+    analyze_pdf_form,
+    verify_answer,
+)
 from services.utils.tts_cache import audio_filename, ensure_all_audio
 
 # Upload directory (same as routers/upload.py)

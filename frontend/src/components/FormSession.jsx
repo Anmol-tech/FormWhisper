@@ -223,18 +223,12 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
         }
     };
 
-    const handleTextSubmit = () => {
-        // Submit the typed text directly
-        setAnswers((prev) => ({ ...prev, [current.fieldName]: editValue }));
-        if (currentIndex < totalQuestions - 1) {
-            setCurrentIndex((prev) => prev + 1);
-            setPhase('asking');
-            setLastTranscript('');
-            setIsEditing(false);
-            setEditValue('');
-        } else {
-            setPhase('complete');
-        }
+    const handleTextSubmit = async () => {
+        if (!editValue.trim()) return;
+        // Run the same verify pipeline as voice — formats and validates typed input too
+        setLastTranscript(editValue);
+        setIsEditing(false);
+        await verifyTranscript(editValue);
     };
 
     const handleReplay = () => {
@@ -457,7 +451,7 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
                             {isEditing ? 'Edit your answer above' : 'Is that correct?'}
                         </p>
                         <div className="confirm-actions">
-                            <button className="confirm-btn yes" onClick={() => handleConfirm(true)}>
+                            <button className="confirm-btn yes" onClick={() => isEditing ? handleTextSubmit() : handleConfirm(true)}>
                                 ✓ {isEditing ? 'Submit' : 'Yes'}
                             </button>
                             <button className="confirm-btn no" onClick={() => handleConfirm(false)}>
