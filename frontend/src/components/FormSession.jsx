@@ -464,13 +464,14 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
 
                         {/* Actions */}
                         <div className="voice-actions">
-                            <button
-                                className="voice-action-btn"
-                                onClick={handlePrevField}
-                                disabled={currentIndex === 0}
-                            >
-                                ← Previous
-                            </button>
+                            {currentIndex > 0 && (
+                                <button
+                                    className="voice-action-btn"
+                                    onClick={handlePrevField}
+                                >
+                                    ← Previous
+                                </button>
+                            )}
                             <button className="voice-action-btn" onClick={handleReplay}>
                                 🔁 Replay
                             </button>
