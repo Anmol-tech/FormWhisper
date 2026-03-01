@@ -21,18 +21,91 @@ from models.session_state import SessionState
 # Static mapping for FEMA 009-0-3 AcroForm field names → friendly keys we emit
 # during VLM analysis. This keeps AcroForm filling aligned even when the PDF
 # uses opaque internal names.
+#
+# Field layout (confirmed via PyMuPDF rect inspection):
+#   Row 1 (y≈661): TextField1[1]=NAME(print)  TextField1[2]=SIGNATURE
+#                  TextField1[3]=DATE OF BIRTH  DateTimeField1[0]=DATE SIGNED
+#   Row 2 (y≈697): TextField1[9]=INSPECTOR ID#  TextField1[6]=FEMA APP#
+#                  TextField1[7]=DISASTER#    ← for-office-use-only, not filled
+#   Row 3 (y≈733): TextField1[10]=ADDRESS OF DAMAGED PROPERTY
+#                  TextField1[8]=CITY  TextField1[4]=STATE  TextField1[5]=ZIP
+#   Checkboxes:    CheckBox1[0..2]=citizenship  TextField1[0]=minor child
+
+_TF = "CBP303[0].FEMAFormTemplate[0].TextField1"
+_DT = "CBP303[0].FEMAFormTemplate[0].DateTimeField1"
+_CB = "CBP303[0].FEMAFormTemplate[0].CheckBox1"
+
 FEMA_FIELD_MAP = {
-    "citizen_status": "CBP303[0].FEMAFormTemplate[0].CheckBox1[0]",
-    "qualified_alien_status": "CBP303[0].FEMAFormTemplate[0].CheckBox1[1]",
-    "parent_guardian_status": "CBP303[0].FEMAFormTemplate[0].CheckBox1[2]",
-    "minor_child_details": "CBP303[0].FEMAFormTemplate[0].TextField1[0]",
-    "name_print": "CBP303[0].FEMAFormTemplate[0].TextField1[1]",
-    "date_of_birth": "CBP303[0].FEMAFormTemplate[0].DateTimeField1[0]",
-    "address_of_damaged_property": "CBP303[0].FEMAFormTemplate[0].TextField1[2]",
-    "city": "CBP303[0].FEMAFormTemplate[0].TextField1[9]",
-    "state": "CBP303[0].FEMAFormTemplate[0].TextField1[6]",
-    "zip_code": "CBP303[0].FEMAFormTemplate[0].TextField1[7]",
+    # ── Checkboxes ────────────────────────────────────────────────────────────
+    "citizen_status": f"{_CB}[0]",
+    "citizenship_status": f"{_CB}[0]",
+    "us_citizen": f"{_CB}[0]",
+    "us_citizenship": f"{_CB}[0]",
+    "citizenship": f"{_CB}[0]",
+    "i_am_a_citizen": f"{_CB}[0]",
+    "citizen_or_non_citizen_national": f"{_CB}[0]",
+    "qualified_alien_status": f"{_CB}[1]",
+    "qualified_alien": f"{_CB}[1]",
+    "alien_status": f"{_CB}[1]",
+    "parent_guardian_status": f"{_CB}[2]",
+    "parent_or_guardian": f"{_CB}[2]",
+    "guardian_status": f"{_CB}[2]",
+    # ── Minor child text ──────────────────────────────────────────────────────
+    "minor_child_details": f"{_TF}[0]",
+    "minor_child_name": f"{_TF}[0]",
+    "minor_child": f"{_TF}[0]",
+    # ── Row 1: NAME | SIGNATURE | DATE OF BIRTH | DATE SIGNED ─────────────────
+    "name_print": f"{_TF}[1]",
+    "applicant_name": f"{_TF}[1]",
+    "applicant_full_name": f"{_TF}[1]",
+    "full_name": f"{_TF}[1]",
+    "full_legal_name": f"{_TF}[1]",
+    "legal_name": f"{_TF}[1]",
+    "print_name": f"{_TF}[1]",
+    "name": f"{_TF}[1]",
+    "your_name": f"{_TF}[1]",
+    "first_last_name": f"{_TF}[1]",
+    # SIGNATURE (TextField1[2]) is excluded — applicants don't type a signature
+    "date_of_birth": f"{_TF}[3]",
+    "dob": f"{_TF}[3]",
+    "birth_date": f"{_TF}[3]",
+    "birthdate": f"{_TF}[3]",
+    "date_birth": f"{_TF}[3]",
+    # DATE SIGNED (DateTimeField1[0]) is excluded — staff fill this
+    # ── Row 3: ADDRESS | CITY | STATE | ZIP ───────────────────────────────────
+    "address_of_damaged_property": f"{_TF}[10]",
+    "damaged_property_address": f"{_TF}[10]",
+    "property_address": f"{_TF}[10]",
+    "street_address": f"{_TF}[10]",
+    "address": f"{_TF}[10]",
+    "mailing_address": f"{_TF}[10]",
+    "damage_address": f"{_TF}[10]",
+    "damaged_address": f"{_TF}[10]",
+    "city": f"{_TF}[8]",
+    "city_name": f"{_TF}[8]",
+    "state": f"{_TF}[4]",
+    "state_name": f"{_TF}[4]",
+    "zip_code": f"{_TF}[5]",
+    "zip": f"{_TF}[5]",
+    "postal_code": f"{_TF}[5]",
 }
+
+# Keywords used as a last-resort fuzzy fallback when an exact key isn't in FEMA_FIELD_MAP.
+# Each entry: (keywords_that_must_all_appear, pdf_field_path)
+_FEMA_FUZZY_RULES: list[tuple[set[str], str]] = [
+    ({"name"}, f"{_TF}[1]"),  # any variant of "name" → NAME (print)
+    ({"birth"}, f"{_TF}[3]"),  # date_of_birth variants
+    ({"dob"}, f"{_TF}[3]"),
+    ({"address"}, f"{_TF}[10]"),  # any address variant → damaged property
+    ({"city"}, f"{_TF}[8]"),
+    ({"state"}, f"{_TF}[4]"),
+    ({"zip"}, f"{_TF}[5]"),
+    ({"postal"}, f"{_TF}[5]"),
+    ({"citizen"}, f"{_CB}[0]"),
+    ({"alien"}, f"{_CB}[1]"),
+    ({"guardian"}, f"{_CB}[2]"),
+    ({"parent"}, f"{_CB}[2]"),
+]
 
 
 def _draw_overlays(
@@ -95,7 +168,9 @@ def _draw_overlays(
     return overlays
 
 
-def _wrap_text(text: str, max_width: float, can: canvas.Canvas, font_size: int) -> list[str]:
+def _wrap_text(
+    text: str, max_width: float, can: canvas.Canvas, font_size: int
+) -> list[str]:
     """Simple word wrap using reportlab's stringWidth."""
     if not text:
         return [""]
@@ -104,7 +179,10 @@ def _wrap_text(text: str, max_width: float, can: canvas.Canvas, font_size: int) 
     current = ""
     for word in words:
         candidate = f"{current} {word}".strip()
-        if can.stringWidth(candidate, "Helvetica", font_size) <= max_width or not current:
+        if (
+            can.stringWidth(candidate, "Helvetica", font_size) <= max_width
+            or not current
+        ):
             current = candidate
         else:
             lines.append(current)
@@ -119,6 +197,7 @@ def list_acroform_field_names(pdf_path: Path) -> list[str]:
     names: set[str] = set()
     try:
         import fitz  # type: ignore
+
         with fitz.open(str(pdf_path)) as doc:
             for page in doc:
                 for widget in page.widgets() or []:
@@ -150,7 +229,9 @@ def _has_acroform_fields(reader: PdfReader) -> bool:
         return False
 
 
-def _fill_acroform(reader: PdfReader, answers: dict[str, str]) -> tuple[bytes, int, list[str]] | None:
+def _fill_acroform(
+    reader: PdfReader, answers: dict[str, str]
+) -> tuple[bytes, int, list[str]] | None:
     """
     Attempt to fill AcroForm fields using pypdf's native helper.
 
@@ -191,7 +272,9 @@ def _fill_acroform(reader: PdfReader, answers: dict[str, str]) -> tuple[bytes, i
         return None
 
 
-def _fill_acroform_fitz(pdf_path: Path, answers: dict[str, str]) -> tuple[bytes, int, list[str]] | None:
+def _fill_acroform_fitz(
+    pdf_path: Path, answers: dict[str, str]
+) -> tuple[bytes, int, list[str]] | None:
     """
     Try filling AcroForm fields using PyMuPDF (fitz) if available.
     This is the fastest and most reliable path for real form PDFs.
@@ -221,10 +304,21 @@ def _fill_acroform_fitz(pdf_path: Path, answers: dict[str, str]) -> tuple[bytes,
 
                 try:
                     if widget.field_type == fitz.PDF_WIDGET_TYPE_CHECKBOX:
-                        truthy = str(val).strip().lower() in {"yes", "true", "1", "on", "x", "checked"}
-                        widget.set_value(truthy)
+                        truthy = str(val).strip().lower() in {
+                            "yes",
+                            "true",
+                            "1",
+                            "on",
+                            "x",
+                            "checked",
+                        }
+                        # PyMuPDF 1.24+: set field_value to the on_state string
+                        # (e.g. '1') for checked, or "Off" for unchecked.
+                        widget.field_value = widget.on_state() if truthy else "Off"
                     else:
-                        widget.set_value(str(val))
+                        # For text/date/number fields, assign directly to field_value.
+                        # widget.set_value() was removed in PyMuPDF 1.25+.
+                        widget.field_value = str(val)
                     widget.update()
                     matched += 1
                 except Exception:
@@ -240,11 +334,42 @@ def _fill_acroform_fitz(pdf_path: Path, answers: dict[str, str]) -> tuple[bytes,
 
 
 def _map_answers_to_pdf_fields(answers: dict[str, str]) -> dict[str, str]:
-    """Map friendly field keys to the PDF's internal AcroForm names when known."""
-    mapped = {}
+    """Map friendly field keys to the PDF's internal AcroForm names when known.
+
+    Resolution order:
+      1. Exact match in FEMA_FIELD_MAP
+      2. Case-insensitive / underscore-normalised match in FEMA_FIELD_MAP
+      3. Keyword-based fuzzy rules (_FEMA_FUZZY_RULES)
+      4. Pass through unchanged (handles already-correct AcroForm names)
+    """
+    mapped: dict[str, str] = {}
     for key, val in answers.items():
-        pdf_key = FEMA_FIELD_MAP.get(key, key)
-        mapped[pdf_key] = val
+        # 1. Exact match
+        if key in FEMA_FIELD_MAP:
+            mapped[FEMA_FIELD_MAP[key]] = val
+            continue
+
+        # 2. Normalised match (lower-case, collapse whitespace/hyphens to _)
+        import re as _re
+
+        norm_key = _re.sub(r"[\s\-]+", "_", key.lower())
+        if norm_key in FEMA_FIELD_MAP:
+            mapped[FEMA_FIELD_MAP[norm_key]] = val
+            continue
+
+        # 3. Fuzzy keyword rules
+        tokens = set(_re.split(r"[\s_\-]+", norm_key))
+        fuzzy_hit: str | None = None
+        for keywords, pdf_field in _FEMA_FUZZY_RULES:
+            if keywords <= tokens:
+                fuzzy_hit = pdf_field
+                break
+        if fuzzy_hit:
+            mapped[fuzzy_hit] = val
+            continue
+
+        # 4. Pass through unchanged
+        mapped[key] = val
     return mapped
 
 
