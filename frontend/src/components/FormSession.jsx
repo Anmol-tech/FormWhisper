@@ -11,6 +11,8 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
     const [uploadingAudio, setUploadingAudio] = useState(false);
     const [audioError, setAudioError] = useState('');
     const [lastTranscript, setLastTranscript] = useState('');
+    const [isEditing, setIsEditing] = useState(false);
+    const [editValue, setEditValue] = useState('');
 
     const mediaRecorderRef = useRef(null);
     const chunksRef = useRef([]);
@@ -78,6 +80,8 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
         setAnswers({});
         setPhase('asking');
         setLastTranscript('');
+        setIsEditing(false);
+        setEditValue('');
     }, [analyzedQuestions]);
 
     // Merge live answers coming from backend in real time
@@ -155,12 +159,15 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
 
     const handleConfirm = (confirmed) => {
         if (confirmed) {
-            setAnswers((prev) => ({ ...prev, [current.fieldName]: lastTranscript }));
+            const value = isEditing ? editValue : lastTranscript;
+            setAnswers((prev) => ({ ...prev, [current.fieldName]: value }));
 
             if (currentIndex < totalQuestions - 1) {
                 setCurrentIndex((prev) => prev + 1);
                 setPhase('asking');
                 setLastTranscript('');
+                setIsEditing(false);
+                setEditValue('');
             } else {
                 setPhase('complete');
             }
@@ -168,6 +175,31 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
             // Retry
             setPhase('asking');
             setLastTranscript('');
+            setIsEditing(false);
+            setEditValue('');
+        }
+    };
+
+    const handleTypeInstead = () => {
+        if (!isEditing) {
+            setIsEditing(true);
+            setEditValue(lastTranscript);
+        } else {
+            setIsEditing(false);
+        }
+    };
+
+    const handleTextSubmit = () => {
+        // Submit the typed text directly
+        setAnswers((prev) => ({ ...prev, [current.fieldName]: editValue }));
+        if (currentIndex < totalQuestions - 1) {
+            setCurrentIndex((prev) => prev + 1);
+            setPhase('asking');
+            setLastTranscript('');
+            setIsEditing(false);
+            setEditValue('');
+        } else {
+            setPhase('complete');
         }
     };
 
@@ -183,6 +215,8 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
             setPhase('asking');
             setLastTranscript('');
             setAudioError('');
+            setIsEditing(false);
+            setEditValue('');
         }
     };
 
@@ -336,15 +370,32 @@ export default function FormSession({ pdfUrl, fileName, liveAnswers, analyzedQue
                 ) : phase === 'confirming' ? (
                     <div className="voice-confirmation">
                         <p className="voice-confirmation-heard">I heard:</p>
-                        <p className="voice-confirmation-value">"{getTranscript()}"</p>
+                        {isEditing ? (
+                            <input
+                                type="text"
+                                className="voice-edit-input"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' && editValue.trim()) handleTextSubmit(); }}
+                                autoFocus
+                                placeholder="Type your answer..."
+                            />
+                        ) : (
+                            <p className="voice-confirmation-value">"{getTranscript()}"</p>
+                        )}
                         {uploadingAudio && <p className="voice-transcribing">Transcribing...</p>}
-                        <p className="voice-confirmation-prompt">Is that correct?</p>
+                        <p className="voice-confirmation-prompt">
+                            {isEditing ? 'Edit your answer above' : 'Is that correct?'}
+                        </p>
                         <div className="confirm-actions">
                             <button className="confirm-btn yes" onClick={() => handleConfirm(true)}>
-                                ✓ Yes
+                                ✓ {isEditing ? 'Submit' : 'Yes'}
                             </button>
                             <button className="confirm-btn no" onClick={() => handleConfirm(false)}>
-                                ✗ No
+                                ✗ Retry
+                            </button>
+                            <button className="confirm-btn edit" onClick={handleTypeInstead}>
+                                ✏️ {isEditing ? 'Back to voice' : 'Type instead'}
                             </button>
                         </div>
                     </div>

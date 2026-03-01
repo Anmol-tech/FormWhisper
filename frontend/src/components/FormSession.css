@@ -645,6 +645,42 @@
 	background: rgba(255, 255, 255, 0.25);
 }
 
+.confirm-btn.edit {
+	background: rgba(255, 255, 255, 0.1);
+	color: var(--clr-white);
+	border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.confirm-btn.edit:hover {
+	background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Voice Edit Input ── */
+.voice-edit-input {
+	width: 100%;
+	max-width: 360px;
+	padding: 0.75rem 1rem;
+	font-size: var(--fs-lg, 1.125rem);
+	font-weight: var(--fw-semibold, 600);
+	color: var(--clr-white, #fff);
+	background: rgba(255, 255, 255, 0.1);
+	border: 2px solid var(--clr-accent, #4fd1c5);
+	border-radius: var(--radius-sm, 6px);
+	outline: none;
+	text-align: center;
+	margin-bottom: 0.5rem;
+	transition: all 0.2s ease;
+}
+
+.voice-edit-input::placeholder {
+	color: rgba(255, 255, 255, 0.4);
+}
+
+.voice-edit-input:focus {
+	background: rgba(255, 255, 255, 0.15);
+	box-shadow: 0 0 0 3px rgba(79, 209, 197, 0.25);
+}
+
 /* ── Completion State ── */
 .voice-complete {
 	text-align: center;
