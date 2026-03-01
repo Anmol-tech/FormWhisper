@@ -99,7 +99,7 @@ function App() {
   };
 
   const handleToggleSpatial = () => {
-    setView((v) => (v === 'spatial' ? 'home' : 'spatial'));
+    setView((v) => (v === 'spatial' ? 'session' : 'spatial'));
   };
 
   const getSessionName = () => {
@@ -114,25 +114,27 @@ function App() {
         onLogoClick={handleLogoClick}
       />
 
-      {/* 3D View toggle button */}
-      <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 999 }}>
-        <button
-          onClick={handleToggleSpatial}
-          style={{
-            padding: '12px 20px',
-            background: view === 'spatial' ? '#1a5c68' : '#2a7886',
-            color: 'white',
-            border: 'none',
-            borderRadius: '999px',
-            cursor: 'pointer',
-            fontWeight: '700',
-            fontSize: '14px',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-          }}
-        >
-          {view === 'spatial' ? '← Back' : '✦ 3D View'}
-        </button>
-      </div>
+      {/* 3D View toggle — only shown after a document is uploaded */}
+      {(view === 'session' || view === 'spatial') && (
+        <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 999 }}>
+          <button
+            onClick={handleToggleSpatial}
+            style={{
+              padding: '12px 20px',
+              background: view === 'spatial' ? '#1a5c68' : '#2a7886',
+              color: 'white',
+              border: 'none',
+              borderRadius: '999px',
+              cursor: 'pointer',
+              fontWeight: '700',
+              fontSize: '14px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+            }}
+          >
+            {view === 'spatial' ? '← Back' : '✦ 3D View'}
+          </button>
+        </div>
+      )}
 
       {view === 'spatial' ? (
         <SpatialPDFView />
