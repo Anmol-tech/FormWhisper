@@ -108,6 +108,82 @@ _FEMA_FUZZY_RULES: list[tuple[set[str], str]] = [
 ]
 
 
+async def _ask_llm_for_acroform_mapping(
+    acroform_names: list[str],
+    vlm_fields: list[dict],
+) -> dict[str, str]:
+    """
+    Ask the LLM to map each VLM-detected field (field_name + label) to the
+    closest AcroForm internal field name from the PDF.
+
+    Returns a dict: { vlm_field_name → acroform_field_name }.
+    Fields the LLM cannot confidently match are omitted.
+    """
+    import json as _json
+    import re as _re
+    import logging
+
+    log = logging.getLogger(__name__)
+
+    # Lazy import to avoid circular dependency (pdf_filler ← routers/llm → pdf_filler)
+    try:
+        from services.llm import chat, extract_content  # noqa: PLC0415
+    except Exception as exc:
+        log.warning("LLM import failed — skipping acroform mapping: %s", exc)
+        return {}
+
+    if not acroform_names or not vlm_fields:
+        return {}
+
+    fields_desc = "\n".join(
+        f'  - field_name: "{f.get("field_name","")}"  label: "{f.get("label","")}"  type: {f.get("type","text")}'
+        for f in vlm_fields
+    )
+    acroform_desc = "\n".join(f'  "{n}"' for n in acroform_names)
+
+    prompt = (
+        "You are helping fill a PDF form. "
+        "The PDF contains AcroForm fields with the following internal names:\n"
+        f"{acroform_desc}\n\n"
+        "A vision model detected these fillable fields and their human-readable labels:\n"
+        f"{fields_desc}\n\n"
+        "Task: for each detected field, identify which AcroForm internal name it corresponds to.\n"
+        "Rules:\n"
+        "- Match by semantic meaning of the label, not exact string.\n"
+        "- Only include fields you are confident about.\n"
+        "- Each AcroForm name may be used at most once.\n"
+        '- Return ONLY a valid JSON object: { "vlm_field_name": "acroform_field_name", ... }\n'
+        "- Do NOT include any explanation or markdown fences."
+    )
+
+    try:
+        response = await chat(
+            messages=[
+                {"role": "system", "content": "You are a precise JSON-only assistant."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=512,
+            temperature=0.0,
+        )
+        raw = extract_content(response)
+        # Strip markdown fences if present
+        cleaned = _re.sub(r"^```(?:json)?\s*", "", raw.strip())
+        cleaned = _re.sub(r"\s*```$", "", cleaned).strip()
+        m = _re.search(r"\{.*\}", cleaned, _re.DOTALL)
+        if m:
+            cleaned = m.group()
+        mapping: dict[str, str] = _json.loads(cleaned)
+        # Validate — keep only entries where the acroform name actually exists
+        valid = {k: v for k, v in mapping.items() if v in acroform_names}
+        log.info(
+            "LLM AcroForm mapping: %d/%d fields matched", len(valid), len(vlm_fields)
+        )
+        return valid
+    except Exception as exc:
+        log.warning("LLM AcroForm mapping failed: %s", exc)
+        return {}
+
+
 def _draw_overlays(
     base_reader: PdfReader,
     fields: Iterable[dict],
@@ -380,43 +456,85 @@ async def fill_pdf_with_answers(
 ) -> bytes:
     """
     Fill an uploaded PDF. Preference order:
-      1) PyMuPDF native AcroForm filling (fast, best fidelity)
-      2) pypdf AcroForm filling
-      3) Overlay text using normalized bounding boxes (only when no AcroForm)
+      1) PyMuPDF AcroForm — static FEMA_FIELD_MAP / fuzzy mapping
+      2) LLM-assisted AcroForm — LLM maps VLM labels → real PDF field names
+      3) pypdf AcroForm — same LLM-mapped keys
+      4) Bounding-box text overlay — always works for any PDF
     """
-    # 1) PyMuPDF path (if installed and fields present)
-    mapped_answers = _map_answers_to_pdf_fields(answers)
+    import logging
 
+    log = logging.getLogger(__name__)
+
+    mapped_answers = _map_answers_to_pdf_fields(answers)
+    reader = PdfReader(str(pdf_path))
+    acroform_names = list_acroform_field_names(pdf_path)
+
+    # 1) PyMuPDF with static/fuzzy mapping
     fitz_result = _fill_acroform_fitz(pdf_path, mapped_answers)
     if fitz_result:
         pdf_bytes, matched, avail = fitz_result
-        if matched == 0:
-            raise ValueError(
-                "AcroForm detected but none of your answers matched field names. "
-                f"Available fields: {', '.join(avail[:40])}"
-            )
-        return pdf_bytes
+        if matched > 0:
+            log.info("PDF filled via PyMuPDF AcroForm (%d fields)", matched)
+            return pdf_bytes
+        log.info(
+            "PyMuPDF AcroForm: 0 static matches. Available fields: %s",
+            ", ".join(avail[:10]),
+        )
 
-    reader = PdfReader(str(pdf_path))
+    # 2) LLM-assisted mapping — only when the PDF has AcroForm fields and
+    #    the static map produced nothing.
+    if acroform_names and fields:
+        log.info(
+            "Asking LLM to map %d VLM fields → %d AcroForm names",
+            len(fields),
+            len(acroform_names),
+        )
+        llm_map = await _ask_llm_for_acroform_mapping(acroform_names, fields)
+        if llm_map:
+            # Build answer dict keyed by AcroForm internal names
+            llm_mapped: dict[str, str] = {}
+            for field in fields:
+                fname = field.get("field_name", "")
+                acro_name = llm_map.get(fname)
+                if acro_name and fname in answers:
+                    llm_mapped[acro_name] = answers[fname]
 
-    # 2) pypdf AcroForm path
+            if llm_mapped:
+                # Try PyMuPDF first with the LLM-derived names
+                fitz_llm = _fill_acroform_fitz(pdf_path, llm_mapped)
+                if fitz_llm:
+                    pdf_bytes, matched, _ = fitz_llm
+                    if matched > 0:
+                        log.info(
+                            "PDF filled via PyMuPDF + LLM mapping (%d fields)", matched
+                        )
+                        return pdf_bytes
+
+                # 3) pypdf with LLM-derived names
+                pypdf_llm = _fill_acroform(reader, llm_mapped)
+                if pypdf_llm:
+                    pdf_bytes, matched, _ = pypdf_llm
+                    if matched > 0:
+                        log.info(
+                            "PDF filled via pypdf + LLM mapping (%d fields)", matched
+                        )
+                        return pdf_bytes
+
+    # 3) pypdf with static mapping (no LLM)
     if _has_acroform_fields(reader):
         pypdf_result = _fill_acroform(reader, mapped_answers)
         if pypdf_result:
             pdf_bytes, matched, avail = pypdf_result
-            if matched == 0:
-                raise ValueError(
-                    "AcroForm detected but none of your answers matched field names. "
-                    f"Available fields: {', '.join(avail[:40])}"
-                )
-            return pdf_bytes
-        else:
-            raise ValueError(
-                "AcroForm detected but could not write values. "
-                "Ensure answer keys match PDF field names."
+            if matched > 0:
+                log.info("PDF filled via pypdf AcroForm (%d fields)", matched)
+                return pdf_bytes
+            log.info(
+                "pypdf AcroForm: 0 static matches. Available: %s — using overlay.",
+                ", ".join(avail[:10]),
             )
 
-    # 3) Fallback overlay only when no AcroForm exists
+    # 4) Bounding-box text overlay — universal fallback
+    log.info("Filling PDF via bounding-box overlay (%d fields provided)", len(fields))
     writer = PdfWriter()
     overlays = _draw_overlays(reader, fields, answers)
 

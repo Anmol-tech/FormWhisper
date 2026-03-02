@@ -171,13 +171,13 @@ FORM_ANALYSIS_PROMPT = (
     "A FILLABLE FIELD is ONLY something with a BLANK space, line, box, or checkbox where the applicant must write/type/select.\n"
     "A STATEMENT the applicant merely reads or agrees to is NOT a field.\n"
     "Examples of things that are NOT fields (NEVER include these):\n"
-    '  × \"I authorize FEMA to verify all information...\"\n'
-    '  × \"I authorize all custodians of records of my insurance...\"\n'
-    '  × \"I certify that the above information is true...\"\n'
-    '  × \"Penalty for false statements...\"\n'
-    '  × \"Privacy Act Statement...\"\n'
-    '  × Any sentence that starts with \"I authorize\", \"I certify\", \"I agree\", \"I understand\", \"I acknowledge\"\n'
-    'If you are unsure whether something is a fillable field, ask yourself: \"Is there a blank for the person to write in?\"\n'
+    '  × "I authorize FEMA to verify all information..."\n'
+    '  × "I authorize all custodians of records of my insurance..."\n'
+    '  × "I certify that the above information is true..."\n'
+    '  × "Penalty for false statements..."\n'
+    '  × "Privacy Act Statement..."\n'
+    '  × Any sentence that starts with "I authorize", "I certify", "I agree", "I understand", "I acknowledge"\n'
+    'If you are unsure whether something is a fillable field, ask yourself: "Is there a blank for the person to write in?"\n'
     "If the answer is no, DO NOT include it.\n\n"
     "CRITICAL INSTRUCTIONS - READ CAREFULLY:\n"
     "1. SCAN EVERY SINGLE PAGE COMPLETELY:\n"
@@ -218,9 +218,9 @@ FORM_ANALYSIS_PROMPT = (
     "5. CONVERSATIONAL QUESTION STYLE - This is critical:\n"
     "   - Write prompts as a warm, friendly human assistant would say them out loud\n"
     "   - Use natural, spoken language — NOT bureaucratic form labels\n"
-    '   - Use contractions where natural (e.g., \"What\'s\", \"Can you\", \"Could you\")\n'
-    '   - Add brief context or empathy where helpful (e.g., \"No worries if this changes —\")\n'
-    '   - For sensitive fields (SSN, income), add a reassuring note (e.g., \"This is kept private and secure.\")\n'
+    '   - Use contractions where natural (e.g., "What\'s", "Can you", "Could you")\n'
+    '   - Add brief context or empathy where helpful (e.g., "No worries if this changes —")\n'
+    '   - For sensitive fields (SSN, income), add a reassuring note (e.g., "This is kept private and secure.")\n'
     "   - For choice/checkbox fields, phrase as a natural spoken question then list options\n"
     "   - Avoid words like 'please provide', 'enter', 'input', 'specify' — use 'tell me', 'what is', 'can you share'\n"
     "   - Keep questions SHORT and clear — one sentence ideally\n"
@@ -231,16 +231,16 @@ FORM_ANALYSIS_PROMPT = (
     "   - Quality over quantity: 15 real fields is better than 40 fields with junk\n"
     "   - Continue until you've processed every visible FILLABLE field on every page\n\n"
     "OUTPUT FORMAT - Return ONLY a valid JSON array. Each element must have:\n"
-    '   - \"field_name\": descriptive snake_case identifier (e.g., \"applicant_first_name\", \"mailing_street_address\")\n'
-    '   - \"label\": exact label text from the form (e.g., \"First Name\", \"Street Address\")\n'
-    '   - \"type\": one of: text, date, ssn, phone, address, yes_no, number, email, checkbox, choice\n'
-    '   - \"prompt\": conversational question as a friendly assistant would say it out loud\n'
-    '   - \"options\": (REQUIRED for checkbox/choice types) array of all available options\n'
-    "   - \"bounding_box\": REQUIRED object with keys page (1-based), x_norm, y_norm, w_norm, h_norm — all floats 0-1, measured from the TOP-LEFT corner of the page and NORMALISED by page width/height. x_norm/y_norm refer to the upper-left of the input area; w_norm/h_norm cover the blank box/line region the applicant fills.\n\n"
+    '   - "field_name": descriptive snake_case identifier (e.g., "applicant_first_name", "mailing_street_address")\n'
+    '   - "label": exact label text from the form (e.g., "First Name", "Street Address")\n'
+    '   - "type": one of: text, date, ssn, phone, address, yes_no, number, email, checkbox, choice\n'
+    '   - "prompt": conversational question as a friendly assistant would say it out loud\n'
+    '   - "options": (REQUIRED for checkbox/choice types) array of all available options\n'
+    '   - "bounding_box": REQUIRED object with keys page (1-based), x_norm, y_norm, w_norm, h_norm — all floats 0-1, measured from the TOP-LEFT corner of the page and NORMALISED by page width/height. x_norm/y_norm refer to the upper-left of the input area; w_norm/h_norm cover the blank box/line region the applicant fills.\n\n'
     "OUTPUT FORMAT EXAMPLES (structure only — DO NOT include these in your output):\n"
     "[\n"
-    '  {\"field_name\":\"<snake_case>\",\"label\":\"<exact form label>\",\"type\":\"text\",\"prompt\":\"<friendly spoken question>\",\"bounding_box\":{\"page\":1,\"x_norm\":0.12,\"y_norm\":0.24,\"w_norm\":0.25,\"h_norm\":0.04}},\n'
-    '  {\"field_name\":\"<snake_case>\",\"label\":\"<exact form label>\",\"type\":\"choice\",\"prompt\":\"<question>\",\"options\":[\"Option A\",\"Option B\",\"Option C\"],\"bounding_box\":{\"page\":2,\"x_norm\":0.55,\"y_norm\":0.31,\"w_norm\":0.18,\"h_norm\":0.05}}\n'
+    '  {"field_name":"<snake_case>","label":"<exact form label>","type":"text","prompt":"<friendly spoken question>","bounding_box":{"page":1,"x_norm":0.12,"y_norm":0.24,"w_norm":0.25,"h_norm":0.04}},\n'
+    '  {"field_name":"<snake_case>","label":"<exact form label>","type":"choice","prompt":"<question>","options":["Option A","Option B","Option C"],"bounding_box":{"page":2,"x_norm":0.55,"y_norm":0.31,"w_norm":0.18,"h_norm":0.05}}\n'
     "]\n"
     "WARNING: The placeholders above show structure only. Every field you output MUST come from the actual form images.\n\n"
     "IMPORTANT: Return ONLY the complete JSON array with ALL voice-fillable fields from ALL pages.\n"
@@ -322,13 +322,52 @@ async def analyze_pdf_form(
     raw_content = extract_content(response)
     usage = response.get("usage", {})
 
-    # Check if response might have been truncated
+    # If the response was truncated (used ≥95% of max_tokens), retry once with
+    # double the token budget so we get a complete JSON array.
     completion_tokens = usage.get("completion_tokens", 0)
     if completion_tokens >= max_tokens * 0.95:
+        retry_tokens = max_tokens * 2
         logger.warning(
-            f"Response used {completion_tokens}/{max_tokens} tokens - may have been truncated. "
-            "Consider increasing max_tokens for this PDF."
+            "Response used %d/%d tokens — likely truncated. "
+            "Retrying with %d max_tokens.",
+            completion_tokens,
+            max_tokens,
+            retry_tokens,
         )
+        response2 = await chat(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a warm, friendly voice assistant helping people fill out government forms. "
+                        "Your job is to extract EVERY fillable field from the form images and turn each one into "
+                        "a natural, conversational question — the kind a helpful human would ask out loud. "
+                        "ONLY include fields that have a blank space, line, box, or checkbox for the person to fill in. "
+                        "NEVER include authorization statements, legal disclaimers, consent paragraphs, or any "
+                        "text that starts with 'I authorize', 'I certify', 'I agree', etc. — those are NOT fields. "
+                        "Also exclude signature lines and date-signed lines. "
+                        "Use contractions, empathetic phrasing, and plain language. Avoid bureaucratic wording. "
+                        "Return ONLY a complete JSON array with ALL genuinely fillable fields found."
+                    ),
+                },
+                user_msg,
+            ],
+            max_tokens=retry_tokens,
+            temperature=0.2,
+            model=model,
+        )
+        raw_content2 = extract_content(response2)
+        usage2 = response2.get("usage", {})
+        logger.info(
+            "Retry used %d tokens; original %d",
+            usage2.get("completion_tokens", 0),
+            completion_tokens,
+        )
+        # Use the retried response if it yielded more content
+        if len(raw_content2) > len(raw_content):
+            raw_content = raw_content2
+            usage = usage2
+            response = response2
 
     logger.info(
         f"PDF form analysis complete: {len(pages)} pages analyzed, "
@@ -357,39 +396,100 @@ async def analyze_pdf_form(
 def _parse_questions_json(
     raw: str, page_sizes: list[tuple[int, int, int]] | None = None
 ) -> list[dict[str, Any]]:
-    """Best-effort parse of the LLM's JSON output into a questions list."""
+    """Best-effort parse of the LLM's JSON output into a questions list.
+
+    Handles three cases:
+      1. Clean, complete JSON array  → direct parse
+      2. Truncated array (hit max_tokens mid-response) → salvage all complete objects
+      3. JSON array embedded in prose → extract and parse
+    """
     if not raw or not raw.strip():
         logger.warning("Empty raw output from VLM")
         return []
 
     # Strip markdown code fences if present
     cleaned = re.sub(r"^```(?:json)?\s*", "", raw.strip())
-    cleaned = re.sub(r"\s*```$", "", cleaned)
+    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
 
-    # Also try to strip any leading/trailing text before/after the JSON
-    cleaned = cleaned.strip()
+    def _try_parse_array(text: str) -> list | None:
+        """Return a list if text parses as JSON array, else None."""
+        try:
+            obj = json.loads(text)
+            return obj if isinstance(obj, list) else None
+        except json.JSONDecodeError:
+            return None
 
-    try:
-        data = json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        logger.warning(f"Initial JSON parse failed: {e}")
-        # Try to find a JSON array in the output
-        match = re.search(r"\[.*\]", cleaned, re.DOTALL)
-        if match:
-            try:
-                data = json.loads(match.group())
-                logger.info("Successfully extracted JSON array from surrounding text")
-            except json.JSONDecodeError as e2:
-                logger.error(f"Failed to parse extracted JSON array: {e2}")
-                logger.error(f"Extracted content: {match.group()[:200]}...")
+    def _salvage_objects(text: str) -> list[dict]:
+        """
+        Extract all complete JSON objects from a (possibly truncated) array.
+        Works by scanning for balanced { } pairs using a simple depth counter.
+        """
+        objects: list[dict] = []
+        depth = 0
+        start = -1
+        i = 0
+        in_str = False
+        escape_next = False
+        while i < len(text):
+            ch = text[i]
+            if escape_next:
+                escape_next = False
+            elif ch == "\\" and in_str:
+                escape_next = True
+            elif ch == '"':
+                in_str = not in_str
+            elif not in_str:
+                if ch == "{":
+                    if depth == 0:
+                        start = i
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0 and start != -1:
+                        candidate = text[start : i + 1]
+                        try:
+                            obj = json.loads(candidate)
+                            if isinstance(obj, dict):
+                                objects.append(obj)
+                        except json.JSONDecodeError:
+                            pass
+                        start = -1
+            i += 1
+        return objects
+
+    # 1. Try direct full parse
+    data = _try_parse_array(cleaned)
+    if data is not None:
+        logger.info("JSON parsed cleanly (%d items)", len(data))
+    else:
+        logger.warning("Initial JSON parse failed — attempting recovery")
+
+        # 2. Try to find + parse a complete array in the text
+        array_match = re.search(r"\[.*?\]", cleaned, re.DOTALL)
+        if array_match:
+            data = _try_parse_array(array_match.group())
+            if data is not None:
+                logger.info("Parsed JSON array found in prose (%d items)", len(data))
+
+        # 3. Truncated array — salvage all complete objects
+        if data is None:
+            # Find the start of the array
+            array_start = cleaned.find("[")
+            search_text = cleaned[array_start:] if array_start != -1 else cleaned
+            salvaged = _salvage_objects(search_text)
+            if salvaged:
+                logger.warning(
+                    "JSON was truncated — salvaged %d complete objects from partial response",
+                    len(salvaged),
+                )
+                data = salvaged
+            else:
+                logger.error("No parseable objects found in VLM output")
+                logger.error("Raw output (first 400 chars): %s", cleaned[:400])
                 return []
-        else:
-            logger.error("No JSON array found in output")
-            logger.error(f"Raw output (first 300 chars): {cleaned[:300]}")
-            return []
 
     if not isinstance(data, list):
-        logger.warning(f"Parsed data is not a list, got: {type(data)}")
+        logger.warning("Parsed data is not a list, got: %s", type(data))
         return []
 
     page_size_map = {p: (w, h) for p, w, h in page_sizes or []}
@@ -414,26 +514,22 @@ def _parse_questions_json(
                 x = float(
                     cand.get("x")
                     if "x" in cand
-                    else cand.get("x_norm")
-                    or cand.get("left")
+                    else cand.get("x_norm") or cand.get("left")
                 )
                 y = float(
                     cand.get("y")
                     if "y" in cand
-                    else cand.get("y_norm")
-                    or cand.get("top")
+                    else cand.get("y_norm") or cand.get("top")
                 )
                 w = float(
                     cand.get("w")
                     if "w" in cand
-                    else cand.get("width")
-                    or cand.get("w_norm")
+                    else cand.get("width") or cand.get("w_norm")
                 )
                 h = float(
                     cand.get("h")
                     if "h" in cand
-                    else cand.get("height")
-                    or cand.get("h_norm")
+                    else cand.get("height") or cand.get("h_norm")
                 )
             except Exception:
                 continue
